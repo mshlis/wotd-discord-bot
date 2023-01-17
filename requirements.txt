@@ -1,0 +1,4 @@
+deep_translator==1.9.2
+discord.py==2.1.0
+nltk==3.7
+python-dotenv==0.21.0
