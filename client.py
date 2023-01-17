@@ -107,10 +107,11 @@ class AidanClient(discord.Client):
                 
         elif cmd == "!help":
             await message.channel.send("existing commands are\n"
-                                       "!add := adds words to list (can delimit multiple via a space)\n"
-                                       "!priority-add := adds words to front of list (can delimit multiple via a space)\n"
-                                       "!get-word := returns top word\n"
-                                       "!add-lang := adds a language to translate the words into")
+                                       "!add :: adds words to list (can delimit multiple via a space)\n"
+                                       "!priority-add :: adds words to front of list (can delimit multiple via a space)\n"
+                                       "!get-word :: returns top word\n"
+                                       "!add-lang :: adds a language to translate the words into\n"
+                                       "!wotd-time :: changes default time to post word of the day")
     
     @property
     def state_dict(self):
