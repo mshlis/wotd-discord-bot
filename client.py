@@ -1,6 +1,9 @@
 import discord
 from nltk.corpus import wordnet
 from deep_translator import GoogleTranslator
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 import json
 import os
 
@@ -8,10 +11,43 @@ class AidanClient(discord.Client):
     words = []
     langs = []
     lang_map = GoogleTranslator().get_supported_languages(as_dict=True)
+    wotd_id = "timed_wotd"
+    default_time = dict(
+        day_of_week = "*",
+        year = "*",
+        month = "*",
+        day = "*",
+        hour = 9,
+        minute = 0,
+        second = 0,
+        timezone = "est"
+    )
     
-    def __init__(self, *args, **kwargs):
-        self.load_state()    
-        super().__init__(*args, **kwargs)
+    def __init__(self, channel_id, intents):
+        self.channel_id = channel_id
+        self.load_state()
+        super().__init__(intents=intents)
+        
+    async def on_ready(self):
+        print(f'{self.user} has connected to Discord!')
+        self.scheduler = AsyncIOScheduler()
+        
+        async def _print_word():
+            channel = self.get_channel(self.channel_id)
+            await channel.send(self.get_word())
+        
+        self.scheduler.add_job(
+            func=_print_word, 
+            trigger=CronTrigger(**self.default_time), 
+            id=self.wotd_id,
+            replace_existing=True
+        )
+        self.scheduler.start()
+    
+    def set_time(self, hours, minutes):
+        trigger_args = self.default_time.copy()
+        trigger_args.update(dict(hour=hours, minute=minutes))
+        self.scheduler.reschedule_job(job_id=self.wotd_id, trigger=CronTrigger(**trigger_args))
     
     def translate(self, word, lang):
         abbr = self.lang_map[lang]
@@ -39,9 +75,6 @@ class AidanClient(discord.Client):
             return word
         else:
             return "the bot is out of words :(... blame Aidan, im only Aidan-Bot"
-
-    async def on_ready(self):
-        print(f'{self.user} has connected to Discord!')
         
     async def on_message(self, message):
         if message.author == self.user:
@@ -64,6 +97,13 @@ class AidanClient(discord.Client):
                 self.langs.append(content)
             else:
                 await message.channel.send(f"language <{content}> does not appear to be supported")
+                
+        elif cmd == "!wotd-time":
+            try:
+                h, m = content.split(":")
+                self.set_time(h, m)
+            except Exception as e:
+                print("error:", e)
                 
         elif cmd == "!help":
             await message.channel.send("existing commands are\n"
