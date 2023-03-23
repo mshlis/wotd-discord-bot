@@ -19,7 +19,7 @@ class AidanClient(discord.Client):
         year = "*",
         month = "*",
         day = "*",
-        hour = 9,
+        hour = 8,
         minute = 0,
         second = 0,
         timezone = "est"
@@ -110,7 +110,7 @@ class AidanClient(discord.Client):
         new_word_list = list()
         bad_word_list = list()
         for w in word_list:
-            if w in self.words or not self.has_definitions(w):
+            if w in self.words or not self.has_definitions(w) or w in self.hist.values():
                 bad_word_list.append(w)
             else:
                 new_word_list.append(w)
@@ -140,13 +140,13 @@ class AidanClient(discord.Client):
             new_words, bad_words = self.validate_word_list(content.split())
             self.words.extend(new_words)
             if len(bad_words):
-                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are either already in the queue or have no definition")
+                await message.channel.send(f"the words in list [{', '.join(bad_words)}] either have been used or have no definition")
         
         elif cmd == "!priority-add":
             new_words, bad_words = self.validate_word_list(content.split())
             self.words = new_words + self.words
             if len(bad_words):
-                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are either already in the queue or have no definition")
+                await message.channel.send(f"the words in list [{', '.join(bad_words)}] either have been used or have no definition")
         
         elif cmd == "!get-word":
             await message.channel.send(self.get_word())
