@@ -67,26 +67,42 @@ class AidanClient(discord.Client):
         abbr = self.lang_map[lang]
         return GoogleTranslator(source='en', target=abbr).translate(word)
     
+    def remove_word(self, word):
+        try:
+            self.words.remove(word)
+        except:
+            pass
+        
+    @staticmethod
+    def has_definitions(word):
+        syns = wordnet.synsets(word)
+        return len(syns) > 0
+        
+    def get_word_message(self, word):
+        translations = [self.translate(word, lang) for lang in self.langs]
+        syns = wordnet.synsets(word)
+        msg = word
+        msg += "\n" + "-"*30 + "\nDefinitions" + "\n" + "-"*30
+        if len(syns):
+            for i,syn in enumerate(syns):
+                msg += f"\ndefinition {i+1}: " + syn.definition()
+                examples = syn.examples()
+                if len(examples):
+                    msg += f"\n\t\tin a sentence: {examples[0]}"
+        else:
+            msg += "\nno definitions found"
+        
+        if len(translations):
+            msg += "\n" + "-"*30 + "\nTranslations" + "\n" + "-"*30
+            for lang, trans in zip(self.langs, translations):
+                msg += f"\n{lang}: {trans}"
+        return msg
+    
     def get_word(self):
         if len(self.words):
             word = self.words.pop(0)
-            translations = [self.translate(word, lang) for lang in self.langs]
-            syns = wordnet.synsets(word)
-            word += "\n" + "-"*30 + "\nDefinitions" + "\n" + "-"*30
-            if len(syns):
-                for i,syn in enumerate(syns):
-                    word += f"\ndefinition {i+1}: " + syn.definition()
-                    examples = syn.examples()
-                    if len(examples):
-                        word += f"\n\t\tin a sentence: {examples[0]}"
-            else:
-                word += "\nno definitions found"
-            
-            if len(translations):
-                word += "\n" + "-"*30 + "\nTranslations" + "\n" + "-"*30
-                for lang, trans in zip(self.langs, translations):
-                    word += f"\n{lang}: {trans}"
-            return word
+            return self.get_word_message(word)
+        
         else:
             return "the bot is out of words :(... blame Aidan, im only Aidan-Bot"
         
@@ -94,11 +110,22 @@ class AidanClient(discord.Client):
         new_word_list = list()
         bad_word_list = list()
         for w in word_list:
-            if w in self.words:
+            if w in self.words or not self.has_definitions(w):
                 bad_word_list.append(w)
             else:
                 new_word_list.append(w)
         return new_word_list, bad_word_list
+    
+    def validate_permissions(self, user_id, cmd):
+        su = [self.author_id]
+        permissions = {
+            "!add": su,
+            "!priority-add": su,
+            "!get-word": su,
+            "!wotd-time": su,
+            "!list-words": su
+        }
+        return cmd not in permissions.keys() or user_id in permissions.get(cmd, [])
         
     async def on_message(self, message):
         if message.author == self.user:
@@ -106,17 +133,20 @@ class AidanClient(discord.Client):
         
         cmd = message.content.split(" ")[0]
         content = message.content[len(cmd)+1:].lower()
+        if not self.validate_permissions(message.author.id, cmd):
+            await message.channel.send(f"you do not have permissions to use the <{cmd}> command")
+        
         if cmd == "!add":
             new_words, bad_words = self.validate_word_list(content.split())
             self.words.extend(new_words)
             if len(bad_words):
-                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are already in the queue")
+                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are either already in the queue or have no definition")
         
         elif cmd == "!priority-add":
             new_words, bad_words = self.validate_word_list(content.split())
             self.words = new_words + self.words
             if len(bad_words):
-                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are already in the queue")
+                await message.channel.send(f"the words in list [{', '.join(bad_words)}] are either already in the queue or have no definition")
         
         elif cmd == "!get-word":
             await message.channel.send(self.get_word())
@@ -130,14 +160,21 @@ class AidanClient(discord.Client):
                     await message.channel.send(f"language <{content}> is already added!")
             else:
                 await message.channel.send(f"language <{content}> does not appear to be supported")
+        
+        elif cmd == "!define":
+            words = content.split()
+            for word in words:
+                await message.channel.send(self.get_word_message(word))
                 
+        elif cmd == "!remove":
+            to_remove = content.split()
+            for word in to_remove:
+                self.remove_word(word)
+                            
         elif cmd == "!wotd-time":
             try:
-                if message.author.id != self.author_id:
-                    await message.channel.send("only words master can change the time silly")
-                else:
-                    h, m = content.split(":")
-                    self.set_time(h, m)
+                h, m = content.split(":")
+                self.set_time(h, m)
             except Exception as e:
                 print("error:", e)
         
@@ -148,11 +185,8 @@ class AidanClient(discord.Client):
             await message.channel.send(msg)
             
         elif cmd == "!list-words":
-            if message.author.id == self.author_id:
-                msg = "words\n" + "-"*30
-                msg += "\n" + "\n".join(self.words)
-            else:
-                msg = "only the words master can view the list... how dare you"
+            msg = "words\n" + "-"*30
+            msg += "\n" + "\n".join(self.words)
             await message.channel.send(msg)
             
         elif cmd == "!count-words":
@@ -164,10 +198,13 @@ class AidanClient(discord.Client):
                                        "!priority-add :: adds words to front of list (can delimit multiple via a space)\n"
                                        "!get-word :: returns top word\n"
                                        "!add-lang :: adds a language to translate the words into\n"
-                                       "!wotd-time :: changes default time to post word of the day, use military time -- only words master can do this\n"
+                                       "!remove :: removes list of given words\n"
+                                       "!define :: defines list of given words\n"
+                                       "!wotd-time :: changes default time to post word of the day, use military time\n"
                                        "!history :: lists history of all WOTDs\n"
-                                       "!list-words :: lists all words in queue -- only words master can do this\n"
-                                       "!count-words :: returns number of words in queue")
+                                       "!list-words :: lists all words in queue\n"
+                                       "!count-words :: returns number of words in queue\n"
+                                       "!add, !priority-add, !get-word, !wotd-time, !list-words require word-master")
     
     @property
     def state_dict(self):
